@@ -84,22 +84,24 @@ public class MetadataChangeProcessor extends KafkaMessageProcessor {
 
     // if schema is not null, insert or update schema
     if (record.schema != null) {
-      _fieldDetailDao.insertUpdateDatasetFields(identifier, ds.getId(), changeAuditStamp, record.schema);
+      _fieldDetailDao.insertUpdateDatasetFields(identifier, ds.getId(), record.datasetProperty, changeAuditStamp,
+          record.schema);
     }
 
     // if owners are not null, insert or update owner
     if (record.owners != null) {
-      _ownerDao.insertUpdateOwnership(ds.getId(), ds.getUrn(), changeAuditStamp, record.owners);
+      _ownerDao.insertUpdateOwnership(identifier, ds.getId(), changeAuditStamp, record.owners);
     }
 
     // if compliance is not null, insert or update compliance
     if (record.compliancePolicy != null) {
-      // write compliance info to DB
+      _complianceDao.insertUpdateCompliance(identifier, ds.getId(), changeAuditStamp, record.compliancePolicy);
     }
 
     // if suggested compliance is not null, insert or update suggested compliance
     if (record.suggestedCompliancePolicy != null) {
-      // write suggested compliance info to DB
+      _complianceDao.insertUpdateSuggestedCompliance(identifier, ds.getId(), changeAuditStamp,
+          record.suggestedCompliancePolicy);
     }
   }
 }

@@ -1,36 +1,23 @@
 import Ember from 'ember';
 import DatasetTableRow from 'wherehows-web/components/dataset-table-row';
 import {
-  fieldIdentifierTypes,
+  fieldIdentifierTypeIds,
   defaultFieldDataTypeClassification,
   isMixedId,
   isCustomId,
   hasPredefinedFieldFormat,
   logicalTypesForIds,
-  logicalTypesForGeneric
+  logicalTypesForGeneric,
+  SuggestionIntent
 } from 'wherehows-web/constants';
-import { fieldIdentifierTypeIds } from 'wherehows-web/components/dataset-compliance';
+import { fieldChangeSetRequiresReview } from 'wherehows-web/utils/datasets/compliance-policy';
+import { compact } from 'wherehows-web/utils/array';
+import {
+  highConfidenceSuggestions,
+  accumulateFieldSuggestions
+} from 'wherehows-web/utils/datasets/compliance-suggestions';
 
-const { computed, get, getProperties, set } = Ember;
-/**
- * String indicating that the user affirms a suggestion
- * @type {string}
- */
-const acceptIntent = 'accept';
-
-/**
- * String indicating that the user ignored a suggestion
- * @type {string}
- */
-const ignoreIntent = 'ignore';
-
-/**
- * Caches a list of fieldIdentifierTypes values
- * @type {Array<string>}
- */
-const fieldIdentifierTypeValues = Object.keys(fieldIdentifierTypes)
-  .map(fieldIdentifierType => fieldIdentifierTypes[fieldIdentifierType])
-  .mapBy('value');
+const { computed, get, getProperties } = Ember;
 
 /**
  * Extracts the suggestions for identifierType, logicalType suggestions, and confidence from a list of predictions
@@ -38,24 +25,7 @@ const fieldIdentifierTypeValues = Object.keys(fieldIdentifierTypes)
  * @param {Array<Object>} predictions
  * @returns Array<Object>
  */
-const getFieldSuggestions = predictions =>
-  predictions.filter(prediction => prediction).reduce((suggested, { value, confidence = 0 }) => {
-    if (value) {
-      if (fieldIdentifierTypeValues.includes(value)) {
-        suggested = { ...suggested, identifierType: value };
-      } else {
-        suggested = { ...suggested, logicalType: value };
-      }
-
-      return {
-        ...suggested,
-        // value is Percent. identifierType value should be the last element in the list
-        confidence: (confidence * 100).toFixed(2)
-      };
-    }
-
-    return suggested;
-  }, {});
+const getFieldSuggestions = predictions => accumulateFieldSuggestions(highConfidenceSuggestions(compact(predictions)));
 
 export default DatasetTableRow.extend({
   /**
@@ -77,23 +47,23 @@ export default DatasetTableRow.extend({
   suggestionAuthority: computed.alias('field.suggestionAuthority'),
 
   /**
-   * Checks that the field does not have a recently input value
+   * Checks that the field does not have a current policy value
    * @type {Ember.computed}
    * @return {boolean}
    */
-  isNewField: computed('isNewComplianceInfo', 'isModified', function() {
-    const { isNewComplianceInfo, isModified } = getProperties(this, ['isNewComplianceInfo', 'isModified']);
-    return isNewComplianceInfo && !isModified;
+  isReviewRequested: computed('field.{isDirty,suggestion,privacyPolicyExists,suggestionAuthority}', function() {
+    return fieldChangeSetRequiresReview(get(this, 'field'));
   }),
 
   /**
    * Maps the suggestion response to a string resolution
    * @type {Ember.computed}
+   * @return {string|void}
    */
   suggestionResolution: computed('field.suggestionAuthority', function() {
     return {
-      [acceptIntent]: 'Accepted',
-      [ignoreIntent]: 'Discarded'
+      [SuggestionIntent.accept]: 'Accepted',
+      [SuggestionIntent.ignore]: 'Discarded'
     }[get(this, 'field.suggestionAuthority')];
   }),
 
@@ -106,18 +76,58 @@ export default DatasetTableRow.extend({
   }).readOnly(),
 
   /**
+   * Takes a field property and extracts the value on the current policy if a suggestion currently exists for the field
+   * @param {string} fieldProp the field property, either logicalType or identifierType to pick from the field
+   * @return {string | void} the current value if a suggestion & current value exists or undefined
+   */
+  getCurrentValueBeforeSuggestion(fieldProp) {
+    const prediction = get(this, 'prediction') || {};
+    const suggested = prediction[fieldProp];
+    const { label: current } = get(this, fieldProp) || {};
+
+    if (suggested !== 'undefined' && current) {
+      return current;
+    }
+  },
+
+  /**
    * Returns a computed value for the field identifierType
    * @type {Ember.computed<string>}
    */
   identifierType: computed('field.identifierType', 'prediction', function() {
     const identifierTypePath = 'field.identifierType';
-    const {
-      [identifierTypePath]: identifierType,
-      prediction: { identifierType: suggestedIdentifierType } = {}
-    } = getProperties(this, [identifierTypePath, 'prediction']);
+    /**
+     * Inner function takes the field.identifierType and prediction values, and
+     * returns the identifierType to be rendered in the ui
+     * @param params
+     * @return {*}
+     */
+    const getIdentifierType = params => {
+      const {
+        [identifierTypePath]: identifierType,
+        prediction: { identifierType: suggestedIdentifierType } = {}
+      } = params;
+      return suggestedIdentifierType || identifierType;
+    };
 
-    return suggestedIdentifierType || identifierType;
+    return getIdentifierType(getProperties(this, [identifierTypePath, 'prediction']));
   }).readOnly(),
+
+  /**
+   * Gets the identifierType on the compliance policy before the suggested value
+   * @type {string | void}
+   */
+  identifierTypeBeforeSuggestion: computed('identifierType', function() {
+    return this.getCurrentValueBeforeSuggestion('identifierType');
+  }),
+
+  /**
+   * Gets the logicalType on the compliance policy before the suggested value
+   * @type {string | void}
+   */
+  logicalTypeBeforeSuggestion: computed('logicalType', function() {
+    return this.getCurrentValueBeforeSuggestion('logicalType');
+  }),
 
   /**
    * A list of field formats that are determined based on the field identifierType
@@ -125,9 +135,7 @@ export default DatasetTableRow.extend({
    */
   fieldFormats: computed('field.identifierType', function() {
     const identifierType = get(this, 'field.identifierType');
-    const numericAndUrnFieldFormats = logicalTypesForIds.filter(({ value }) => ['ID', 'URN'].includes(value));
-    const numericFieldFormat = numericAndUrnFieldFormats.findBy('value', 'ID');
-    const urnFieldFormat = numericAndUrnFieldFormats.findBy('value', 'URN');
+    const urnFieldFormat = logicalTypesForIds.findBy('value', 'URN');
 
     const mixed = isMixedId(identifierType);
     const custom = isCustomId(identifierType);
@@ -204,7 +212,6 @@ export default DatasetTableRow.extend({
       const { onFieldIdentifierTypeChange } = this.attrs;
       if (typeof onFieldIdentifierTypeChange === 'function') {
         onFieldIdentifierTypeChange(get(this, 'field'), { value });
-        set(this, 'isModified', true);
       }
     },
 
@@ -217,7 +224,6 @@ export default DatasetTableRow.extend({
       const { onFieldLogicalTypeChange } = this.attrs;
       if (typeof onFieldLogicalTypeChange === 'function') {
         onFieldLogicalTypeChange(get(this, 'field'), { value });
-        set(this, 'isModified', true);
       }
     },
 
@@ -229,7 +235,6 @@ export default DatasetTableRow.extend({
       const { onFieldClassificationChange } = this.attrs;
       if (typeof onFieldClassificationChange === 'function') {
         onFieldClassificationChange(get(this, 'field'), { value });
-        set(this, 'isModified', true);
       }
     },
 
@@ -242,7 +247,7 @@ export default DatasetTableRow.extend({
       const { onSuggestionIntent } = this.attrs;
 
       // Accept the suggestion for either identifierType and/or logicalType
-      if (intent === acceptIntent) {
+      if (intent === SuggestionIntent.accept) {
         const { identifierType, logicalType } = get(this, 'prediction');
         if (identifierType) {
           this.actions.onFieldIdentifierTypeChange.call(this, { value: identifierType });

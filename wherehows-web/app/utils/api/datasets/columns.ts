@@ -6,7 +6,7 @@ import {
 } from 'wherehows-web/typings/api/datasets/columns';
 import { getJSON } from 'wherehows-web/utils/api/fetcher';
 import { ApiStatus } from 'wherehows-web/utils/api';
-import { arrayMap } from 'wherehows-web/utils/array-map';
+import { arrayMap } from 'wherehows-web/utils/array';
 
 // TODO:  DSS-6122 Create and move to Error module
 
@@ -66,14 +66,16 @@ const columnDataTypesAndFieldNames = arrayMap(columnDataTypeAndFieldName);
  * @return {Promise<Array<IDatasetColumn>>}
  */
 const readDatasetColumns = async (id: number): Promise<Array<IDatasetColumn>> => {
-  const { status, columns } = await getJSON<IDatasetColumnsGetResponse>({ url: datasetColumnUrlById(id) });
+  const { status, columns, message = datasetColumnsException } = await getJSON<IDatasetColumnsGetResponse>({
+    url: datasetColumnUrlById(id)
+  });
 
   // Returns an empty list if the status is ok but the columns is falsey
   if (status === ApiStatus.OK) {
     return columns || [];
   }
 
-  throw new Error(datasetColumnsException);
+  throw new Error(message);
 };
 
 export { readDatasetColumns, columnDataTypesAndFieldNames, columnsWithHtmlComments };

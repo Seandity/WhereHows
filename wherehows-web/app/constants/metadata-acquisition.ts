@@ -1,4 +1,5 @@
 import Ember from 'ember';
+import { arrayMap } from 'wherehows-web/utils/array';
 
 /**
  * Defines the string values that are allowed for a classification
@@ -10,6 +11,14 @@ enum Classification {
 }
 
 /**
+ * String indicating that the user affirms or ignored a field suggestion
+ */
+enum SuggestionIntent {
+  accept = 'accept',
+  ignore = 'ignore'
+}
+
+/**
  * Describes the index signature for the nonIdFieldLogicalTypes object
  */
 interface INonIdLogicalTypes {
@@ -18,6 +27,37 @@ interface INonIdLogicalTypes {
     displayAs: string;
   };
 }
+
+/**
+ * Describes the properties on a field identifier object for ui rendering
+ */
+interface IFieldIdProps {
+  value: string;
+  isId: boolean;
+  displayAs: string;
+}
+
+/**
+ * Describes the index signature for fieldIdentifierTypes
+ */
+interface IFieldIdTypes {
+  [prop: string]: IFieldIdProps;
+}
+
+/**
+ * Length of time between suggestion modification time and last modified time for the compliance policy
+ * If a policy has been updated within the range of this window then it is considered as stale / or
+ * has been seen previously
+ * @type {number}
+ */
+const lastSeenSuggestionInterval: number = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Percentage value for a compliance policy suggestion with a low confidence score
+ * @type {number}
+ */
+const lowQualitySuggestionConfidenceThreshold = 0.5;
+
 /**
  * A list of id logical types
  * @type {Array.<String>}
@@ -154,12 +194,11 @@ const defaultFieldDataTypeClassification = Object.assign(
 const classifiers = Object.values(defaultFieldDataTypeClassification).filter(
   (classifier, index, iter) => iter.indexOf(classifier) === index
 );
-
 /**
  * A map of identifier types for fields on a dataset
  * @type {{none: {value: string, isId: boolean, displayAs: string}, member: {value: string, isId: boolean, displayAs: string}, subjectMember: {value: string, isId: boolean, displayAs: string}, group: {value: string, isId: boolean, displayAs: string}, organization: {value: string, isId: boolean, displayAs: string}, generic: {value: string, isId: boolean, displayAs: string}}}
  */
-const fieldIdentifierTypes = {
+const fieldIdentifierTypes: IFieldIdTypes = {
   none: {
     value: 'NONE',
     isId: false,
@@ -282,10 +321,34 @@ const logicalTypesForIds = logicalTypeValueLabel('id');
 // Map generic logical type to options consumable in DOM
 const logicalTypesForGeneric = logicalTypeValueLabel('generic');
 
+/**
+ * Caches a list of field identifiers
+ * @type {Array<IFieldIdProps>}
+ */
+const fieldIdentifierTypesList: Array<IFieldIdProps> = arrayMap(
+  (fieldIdentifierType: string) => fieldIdentifierTypes[fieldIdentifierType]
+)(Object.keys(fieldIdentifierTypes));
+
+/**
+ * A list of field identifier types that are Ids i.e member ID, org ID, group ID
+ * @type {Array<Pick<IFieldIdProps, 'value'>>}
+ */
+const fieldIdentifierTypeIds: Array<string> = fieldIdentifierTypesList
+  .filter(({ isId }) => isId)
+  .map(({ value }) => value);
+
+/**
+ * Caches a list of fieldIdentifierTypes values
+ * @type {Array<Pick<IFieldIdProps, 'value'>>}
+ */
+const fieldIdentifierTypeValues: Array<string> = fieldIdentifierTypesList.map(({ value }) => value);
+
 export {
   defaultFieldDataTypeClassification,
   classifiers,
   fieldIdentifierTypes,
+  fieldIdentifierTypeIds,
+  fieldIdentifierTypeValues,
   idLogicalTypes,
   customIdLogicalTypes,
   nonIdFieldLogicalTypes,
@@ -294,5 +357,8 @@ export {
   hasPredefinedFieldFormat,
   logicalTypesForIds,
   logicalTypesForGeneric,
-  getDefaultLogicalType
+  getDefaultLogicalType,
+  lastSeenSuggestionInterval,
+  SuggestionIntent,
+  lowQualitySuggestionConfidenceThreshold
 };

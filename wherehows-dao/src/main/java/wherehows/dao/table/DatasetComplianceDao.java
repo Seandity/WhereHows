@@ -15,10 +15,12 @@ package wherehows.dao.table;
 
 import com.linkedin.events.metadata.ChangeAuditStamp;
 import com.linkedin.events.metadata.CompliancePolicy;
+import com.linkedin.events.metadata.DatasetIdentifier;
 import com.linkedin.events.metadata.SuggestedCompliancePolicy;
 import javax.persistence.EntityManagerFactory;
 import lombok.extern.slf4j.Slf4j;
 import wherehows.models.table.DsCompliance;
+import wherehows.models.view.DsComplianceSuggestion;
 
 import static wherehows.util.UrnUtil.*;
 
@@ -40,14 +42,16 @@ public class DatasetComplianceDao extends BaseDao {
 
   /**
    * Insert / update dataset compliance table given information from MetadataChangeEvent
+   * @param identifier DatasetIdentifier
    * @param datasetId int
-   * @param datasetUrn String
    * @param auditStamp ChangeAuditStamp
    * @param compliance MCE CompliancePolicy
    * @throws Exception
    */
-  public void insertUpdateCompliance(int datasetId, String datasetUrn, ChangeAuditStamp auditStamp,
+  public void insertUpdateCompliance(DatasetIdentifier identifier, int datasetId, ChangeAuditStamp auditStamp,
       CompliancePolicy compliance) throws Exception {
+
+    String datasetUrn = toWhDatasetUrn(identifier);
 
     // find dataset compliance if exist
     DsCompliance dsCompliance = null;
@@ -88,5 +92,22 @@ public class DatasetComplianceDao extends BaseDao {
     }
 
     dsCompliance.setModifiedBy(actor);
+  }
+
+  public DsComplianceSuggestion findComplianceSuggestionByUrn(String datasetUrn) {
+    return null;
+  }
+
+  /**
+   * Insert / update dataset suggested compliance data from MetadataChangeEvent
+   * @param identifier DatasetIdentifier
+   * @param datasetId int
+   * @param auditStamp ChangeAuditStamp
+   * @param suggestion MCE SuggestedCompliancePolicy
+   * @throws Exception
+   */
+  public void insertUpdateSuggestedCompliance(DatasetIdentifier identifier, int datasetId, ChangeAuditStamp auditStamp,
+      SuggestedCompliancePolicy suggestion) throws Exception {
+    // TODO: write suggested compliance information to DB
   }
 }
