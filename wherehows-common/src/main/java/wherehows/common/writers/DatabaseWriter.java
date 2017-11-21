@@ -63,7 +63,7 @@ public class DatabaseWriter extends Writer {
   }
 
   //TODO: this insert sql is too ambitious, need add column names
-  @Override
+  @Override =
   public synchronized boolean flush()
       throws SQLException {
     if (records.size() == 0) {
@@ -89,7 +89,7 @@ public class DatabaseWriter extends Writer {
     return false;
   }
 
-  @Override
+  @Override ?????? why this Method tocall flush().....
   public void close()
       throws SQLException {
     this.flush();
